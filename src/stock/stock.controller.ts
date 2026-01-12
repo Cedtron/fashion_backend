@@ -31,6 +31,7 @@ import { Stock } from '../entities/stock.entity';
 import { diskStorage } from 'multer';
 import { extname } from 'path';
 import { existsSync, mkdirSync, unlinkSync, writeFileSync } from 'fs'; // ADD writeFileSync
+import * as Express from 'express';
 
 @ApiTags('stock')
 @Controller('stock')

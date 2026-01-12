@@ -10,6 +10,7 @@ import { ForgotPasswordDto, VerifyResetCodeDto, ResetPasswordDto } from './dto/f
 import { User } from '../entities/user.entity';
 import { existsSync, mkdirSync, unlinkSync } from 'fs';
 import * as bcrypt from 'bcrypt';
+import * as Express from 'express';
 
 @ApiTags('users')
 @ApiBearerAuth('JWT-auth')
