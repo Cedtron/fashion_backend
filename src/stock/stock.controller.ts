@@ -30,8 +30,9 @@ import { SearchStockDto } from './dto/search-stock.dto';
 import { Stock } from '../entities/stock.entity';
 import { diskStorage } from 'multer';
 import { extname } from 'path';
-import { existsSync, mkdirSync, unlinkSync, writeFileSync } from 'fs'; // ADD writeFileSync
-import * as Express from 'express';
+import { existsSync, mkdirSync, unlinkSync } from 'fs';
+import type { Express } from 'express';
+
 
 @ApiTags('stock')
 @Controller('stock')
@@ -66,132 +67,132 @@ export class StockController {
   // ============================================================
   // IMAGE UPLOAD
   // ============================================================
-@Post(':id/image')
-@UseInterceptors(
-  FileInterceptor('image', {
-    storage: diskStorage({
-      destination: (req, file, cb) => {
-        const uploadPath = './uploads/stock';
-        if (!existsSync(uploadPath)) {
-          mkdirSync(uploadPath, { recursive: true });
-        }
-        cb(null, uploadPath);
-      },
-      filename: (req, file, cb) => {
-        const unique = Date.now() + '-' + Math.round(Math.random() * 1e9);
-        cb(null, unique + extname(file.originalname).toLowerCase());
-      },
+  @Post(':id/image')
+  @UseInterceptors(
+    FileInterceptor('image', {
+      storage: diskStorage({
+        destination: (req, file, cb) => {
+          const uploadPath = './uploads/stock';
+          if (!existsSync(uploadPath)) {
+            mkdirSync(uploadPath, { recursive: true });
+          }
+          cb(null, uploadPath);
+        },
+        filename: (req, file, cb) => {
+          const unique = Date.now() + '-' + Math.round(Math.random() * 1e9);
+          cb(null, unique + extname(file.originalname).toLowerCase());
+        },
+      }),
     }),
-  }),
-)
-async uploadImage(
-  @Param('id', ParseIntPipe) id: number,
-  @UploadedFile() file: Express.Multer.File,
-  @Headers('x-username') username?: string,
-) {
-  console.log('[UPLOAD] File =>', file);
+  )
+  async uploadImage(
+    @Param('id', ParseIntPipe) id: number,
+    @UploadedFile() file: Express.Multer.File,
+    @Headers('x-username') username?: string,
+  ) {
+    console.log('[UPLOAD] File =>', file);
 
-  // 1️⃣ Validate upload
-  if (!file) {
-    throw new BadRequestException('No file uploaded');
-  }
+    // 1️⃣ Validate upload
+    if (!file) {
+      throw new BadRequestException('No file uploaded');
+    }
 
-  const allowedExt = ['.png', '.jpg', '.jpeg', '.webp'];
-  const ext = extname(file.originalname).toLowerCase();
+    const allowedExt = ['.png', '.jpg', '.jpeg', '.webp'];
+    const ext = extname(file.originalname).toLowerCase();
 
-  if (!allowedExt.includes(ext)) {
-    throw new BadRequestException(
-      'Invalid image type. Allowed: png, jpg, jpeg, webp',
-    );
-  }
+    if (!allowedExt.includes(ext)) {
+      throw new BadRequestException(
+        'Invalid image type. Allowed: png, jpg, jpeg, webp',
+      );
+    }
 
-  if (file.size < 100) {
-    throw new BadRequestException('File too small or corrupted');
-  }
+    if (file.size < 100) {
+      throw new BadRequestException('File too small or corrupted');
+    }
 
-  // 2️⃣ Remove old image if exists
-  const stock = await this.stockService.findOne(id);
+    // 2️⃣ Remove old image if exists
+    const stock = await this.stockService.findOne(id);
 
-  if (stock.imagePath) {
-    const oldPath = `.${stock.imagePath}`;
-    if (existsSync(oldPath)) {
-      try {
-        unlinkSync(oldPath);
-      } catch (e) {
-        console.warn('Failed to delete old image:', e);
+    if (stock.imagePath) {
+      const oldPath = `.${stock.imagePath}`;
+      if (existsSync(oldPath)) {
+        try {
+          unlinkSync(oldPath);
+        } catch (e) {
+          console.warn('Failed to delete old image:', e);
+        }
       }
     }
+
+    // 3️⃣ Save new path
+    const imagePath = `/uploads/stock/${file.filename}`;
+
+    // 4️⃣ Delegate hashing + DB update to service
+    const updatedStock = await this.stockService.uploadImage(
+      id,
+      imagePath,
+      username || 'system',
+    );
+
+    // 5️⃣ Return response
+    return {
+      message: 'Image uploaded and indexed successfully',
+      imagePath: updatedStock.imagePath,
+      imageHash: updatedStock.imageHash,
+      stock: updatedStock,
+    };
   }
 
-  // 3️⃣ Save new path
-  const imagePath = `/uploads/stock/${file.filename}`;
+  // ============================================================
+  // SEARCH BY IMAGE (DISK-BASED – OPTION A)
+  // ============================================================
+  @Post('search-by-photo')
+  @UseInterceptors(
+    FileInterceptor('image', {
+      storage: diskStorage({
+        destination: (req, file, cb) => {
+          const uploadPath = './uploads/search';
 
-  // 4️⃣ Delegate hashing + DB update to service
-  const updatedStock = await this.stockService.uploadImage(
-    id,
-    imagePath,
-    username || 'system',
-  );
+          if (!existsSync(uploadPath)) {
+            mkdirSync(uploadPath, { recursive: true });
+          }
 
-  // 5️⃣ Return response
-  return {
-    message: 'Image uploaded and indexed successfully',
-    imagePath: updatedStock.imagePath,
-    imageHash: updatedStock.imageHash,
-    stock: updatedStock,
-  };
-}
-
-// ============================================================
-// SEARCH BY IMAGE (DISK-BASED – OPTION A)
-// ============================================================
-@Post('search-by-photo')
-@UseInterceptors(
-  FileInterceptor('image', {
-    storage: diskStorage({
-      destination: (req, file, cb) => {
-        const uploadPath = './uploads/search';
-
-        if (!existsSync(uploadPath)) {
-          mkdirSync(uploadPath, { recursive: true });
-        }
-
-        cb(null, uploadPath);
-      },
-      filename: (req, file, cb) => {
-        const unique = Date.now() + '-' + Math.round(Math.random() * 1e9);
-        const ext = extname(file.originalname).toLowerCase();
-        cb(null, `${unique}${ext}`);
+          cb(null, uploadPath);
+        },
+        filename: (req, file, cb) => {
+          const unique = Date.now() + '-' + Math.round(Math.random() * 1e9);
+          const ext = extname(file.originalname).toLowerCase();
+          cb(null, `${unique}${ext}`);
+        },
+      }),
+      limits: {
+        fileSize: 5 * 1024 * 1024, // 5MB
       },
     }),
-    limits: {
-      fileSize: 5 * 1024 * 1024, // 5MB
-    },
-  }),
-)
-async searchByPhoto(@UploadedFile() file: Express.Multer.File) {
-  console.log('[SEARCH-BY-PHOTO] File:', file);
+  )
+  async searchByPhoto(@UploadedFile() file: Express.Multer.File) {
+    console.log('[SEARCH-BY-PHOTO] File:', file);
 
-  if (!file) {
-    throw new BadRequestException('Image file is required');
+    if (!file) {
+      throw new BadRequestException('Image file is required');
+    }
+
+    const allowedExt = ['.png', '.jpg', '.jpeg', '.webp'];
+    const ext = extname(file.originalname).toLowerCase();
+
+    if (!allowedExt.includes(ext)) {
+      throw new BadRequestException(
+        'Unsupported image type. Allowed: png, jpg, jpeg, webp',
+      );
+    }
+
+    if (!file.path) {
+      throw new BadRequestException('File path missing after upload');
+    }
+
+    // ✅ PASS FILE PATH (NOT BUFFER)
+    return this.stockService.searchByPhoto(file.path);
   }
-
-  const allowedExt = ['.png', '.jpg', '.jpeg', '.webp'];
-  const ext = extname(file.originalname).toLowerCase();
-
-  if (!allowedExt.includes(ext)) {
-    throw new BadRequestException(
-      'Unsupported image type. Allowed: png, jpg, jpeg, webp',
-    );
-  }
-
-  if (!file.path) {
-    throw new BadRequestException('File path missing after upload');
-  }
-
-  // ✅ PASS FILE PATH (NOT BUFFER)
-  return this.stockService.searchByPhoto(file.path);
-}
 
 
   @Get('alerts')
