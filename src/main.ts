@@ -12,7 +12,12 @@ async function bootstrap() {
   app.enableCors();
 
   // Serve static files for uploaded images
-  app.useStaticAssets(join(__dirname, '..', 'uploads'), {
+  const uploadsPath = process.env.NODE_ENV === 'production' 
+    ? join(process.cwd(), 'uploads')
+    : join(__dirname, '..', 'uploads');
+  
+  console.log(`Serving static files from: ${uploadsPath}`);
+  app.useStaticAssets(uploadsPath, {
     prefix: '/uploads/',
   });
 
