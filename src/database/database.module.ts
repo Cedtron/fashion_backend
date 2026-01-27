@@ -11,8 +11,8 @@ import * as mysql from 'mysql2/promise';
       useFactory: async (configService: ConfigService) => {
         const host = configService.get('DB_HOST', 'localhost');
         const port = configService.get<number>('DB_PORT', 3306);
-        const username = configService.get('DB_USERNAME', 'root');
-        const password = configService.get('DB_PASSWORD', '');
+        const username = configService.get('DB_USERNAME', 'fashion_user');
+        const password = configService.get('DB_PASSWORD', 'Pass123');
         const database = configService.get('DB_DATABASE', 'fashion_house');
 
         // Try to create database if it doesn't exist
