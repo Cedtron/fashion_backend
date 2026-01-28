@@ -21,15 +21,22 @@ export class HealthController {
     
     const stockPath = join(uploadsPath, 'stock');
     
+    let stockFiles = [];
+    if (existsSync(stockPath)) {
+      stockFiles = readdirSync(stockPath);
+    }
+    
     return {
       uploadsPath,
       stockPath,
       uploadsExists: existsSync(uploadsPath),
       stockExists: existsSync(stockPath),
-      stockFiles: existsSync(stockPath) ? readdirSync(stockPath).slice(0, 5) : [],
-      sampleImageUrl: existsSync(stockPath) && readdirSync(stockPath).length > 0 
-        ? `/uploads/stock/${readdirSync(stockPath)[0]}`
-        : null
+      stockFiles: stockFiles.slice(0, 10), // Show first 10 files
+      totalStockFiles: stockFiles.length,
+      sampleImageUrl: stockFiles.length > 0 
+        ? `/uploads/stock/${stockFiles[0]}`
+        : null,
+      testUrls: stockFiles.slice(0, 3).map(file => `/uploads/stock/${file}`)
     };
   }
 }

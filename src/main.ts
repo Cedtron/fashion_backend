@@ -25,14 +25,34 @@ async function bootstrap() {
     ? join(process.cwd(), 'uploads')
     : join(__dirname, '..', 'uploads');
     
+  console.log(`NODE_ENV: ${process.env.NODE_ENV}`);
+  console.log(`Current working directory: ${process.cwd()}`);
+  console.log(`__dirname: ${__dirname}`);
   console.log(`Serving static files from: ${uploadsPath}`);
   console.log(`CORS enabled for origins: ${corsOrigins.join(', ')}`);
+  
+  // Check if uploads directory exists
+  const fs = require('fs');
+  if (fs.existsSync(uploadsPath)) {
+    console.log(`✅ Uploads directory exists: ${uploadsPath}`);
+    const stockPath = join(uploadsPath, 'stock');
+    if (fs.existsSync(stockPath)) {
+      const files = fs.readdirSync(stockPath);
+      console.log(`✅ Stock directory has ${files.length} files`);
+      console.log(`Sample files: ${files.slice(0, 3).join(', ')}`);
+    } else {
+      console.log(`❌ Stock directory not found: ${stockPath}`);
+    }
+  } else {
+    console.log(`❌ Uploads directory not found: ${uploadsPath}`);
+  }
   
   // Make uploads publicly accessible
   app.useStaticAssets(uploadsPath, {
     prefix: '/uploads/',
     index: false,
     setHeaders: (res, path) => {
+      console.log(`📁 Serving static file: ${path}`);
       // Set cache headers for images
       res.setHeader('Cache-Control', 'public, max-age=31536000');
       // Allow cross-origin access
