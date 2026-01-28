@@ -8,17 +8,37 @@ import { join } from 'path';
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
 
-  // Enable CORS
-  app.enableCors();
+  // Enable CORS for cross-instance access
+  const corsOrigins = process.env.CORS_ORIGIN 
+    ? process.env.CORS_ORIGIN.split(',')
+    : ['http://localhost:3000', 'http://localhost:3001'];
+    
+  app.enableCors({
+    origin: corsOrigins,
+    credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'Accept'],
+  });
 
-  // Serve static files for uploaded images
+  // Serve static files for uploaded images - PUBLIC ACCESS
   const uploadsPath = process.env.NODE_ENV === 'production' 
     ? join(process.cwd(), 'uploads')
     : join(__dirname, '..', 'uploads');
-  
+    
   console.log(`Serving static files from: ${uploadsPath}`);
+  console.log(`CORS enabled for origins: ${corsOrigins.join(', ')}`);
+  
+  // Make uploads publicly accessible
   app.useStaticAssets(uploadsPath, {
     prefix: '/uploads/',
+    index: false,
+    setHeaders: (res, path) => {
+      // Set cache headers for images
+      res.setHeader('Cache-Control', 'public, max-age=31536000');
+      // Allow cross-origin access
+      res.setHeader('Access-Control-Allow-Origin', '*');
+      res.setHeader('Access-Control-Allow-Methods', 'GET');
+    },
   });
 
   // Global validation pipe
