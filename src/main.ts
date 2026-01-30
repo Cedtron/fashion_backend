@@ -5,6 +5,7 @@ import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { NestExpressApplication } from '@nestjs/platform-express';
 import { join } from 'path';
 import * as fs from 'fs';
+import * as express from 'express';
 
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
@@ -56,10 +57,15 @@ async function bootstrap() {
   }
 
   // Make uploads PUBLIC
-  app.useStaticAssets(uploadsPath, {
-    prefix: '/uploads',
-    index: false,
-  });
+ app.use(
+  '/uploads',
+  express.static(uploadsPath, {
+    setHeaders: (res) => {
+      res.setHeader('Access-Control-Allow-Origin', '*');
+      res.setHeader('Cache-Control', 'public, max-age=31536000');
+    },
+  }),
+);
 
   /* =========================
      GLOBAL VALIDATION
