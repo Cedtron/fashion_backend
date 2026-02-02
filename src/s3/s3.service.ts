@@ -76,12 +76,18 @@ export class S3Service {
       if (error.name === 'NotFound') {
         console.log('📦 Creating S3 bucket:', this.bucketName);
         
-        const createCommand = new CreateBucketCommand({ 
-          Bucket: this.bucketName,
-          CreateBucketConfiguration: {
-            LocationConstraint: this.configService.get<string>('AWS_REGION')
-          }
-        });
+        const region = this.configService.get<string>('AWS_REGION');
+        
+        // Create bucket command - only add CreateBucketConfiguration if not us-east-1
+        const createBucketInput: any = { Bucket: this.bucketName };
+        
+        if (region && region !== 'us-east-1') {
+          createBucketInput.CreateBucketConfiguration = {
+            LocationConstraint: region as BucketLocationConstraint
+          };
+        }
+        
+        const createCommand = new CreateBucketCommand(createBucketInput);
         await this.s3Client.send(createCommand);
         
         // Set bucket policy to allow public read access to images
