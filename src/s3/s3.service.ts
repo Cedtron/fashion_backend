@@ -83,7 +83,7 @@ export class S3Service {
         
         if (region && region !== 'us-east-1') {
           createBucketInput.CreateBucketConfiguration = {
-            LocationConstraint: region as BucketLocationConstraint
+            LocationConstraint: region
           };
         }
         
