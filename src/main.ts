@@ -3,9 +3,7 @@ import { AppModule } from './app.module';
 import { ValidationPipe } from '@nestjs/common';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { NestExpressApplication } from '@nestjs/platform-express';
-import { join } from 'path';
-import * as fs from 'fs';
-import * as express from 'express';
+import { S3Service } from './s3/s3.service';
 
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
@@ -22,33 +20,11 @@ async function bootstrap() {
 
 
   /* =========================
-     STATIC FILES (UPLOADS)
-     ✅ SERVE IMAGES PUBLICLY
+     S3 INITIALIZATION
   ========================== */
-
-  // ALWAYS resolve uploads relative to dist/
-  const uploadsPath = join(__dirname, '..', 'uploads');
-
-  console.log('================ UPLOADS DEBUG ================');
-  console.log('__dirname:', __dirname);
-  console.log('Resolved uploads path:', uploadsPath);
-
-  // Create uploads directory if it doesn't exist
-  if (!fs.existsSync(uploadsPath)) {
-    fs.mkdirSync(uploadsPath, { recursive: true });
-  }
-
-  // Create stock directory if it doesn't exist
-  const stockPath = join(uploadsPath, 'stock');
-  if (!fs.existsSync(stockPath)) {
-    fs.mkdirSync(stockPath, { recursive: true });
-  }
-
-  // Simple static file serving - NO COMPLEX HEADERS
-  app.use('/uploads', express.static(uploadsPath));
-
-  console.log('✅ Static files served from:', uploadsPath);
-  console.log('✅ Images accessible at: http://3.91.48.66:3000/uploads/stock/filename.jpg');
+  const s3Service = app.get(S3Service);
+  await s3Service.createBucketIfNotExists();
+  console.log('✅ S3 Service initialized and bucket ready');
 
 
 

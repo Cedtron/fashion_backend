@@ -13,6 +13,7 @@ import { ShadesModule } from './shades/shades.module';
 import { GoogleAiModule } from './vertex-ai/vertex-ai.module';
 import { RekognitionModule } from './rekognition/rekognition.module';
 import { HealthModule } from './health/health.module';
+import { S3Module } from './s3/s3.module';
 
 @Module({
   imports: [
@@ -25,6 +26,8 @@ import { HealthModule } from './health/health.module';
     DatabaseModule,
     // Common module for shared services
     CommonModule,
+    // S3 module for file storage
+    S3Module,
     // Feature modules
     UsersModule,
     SuppliersModule,

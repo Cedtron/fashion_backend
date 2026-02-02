@@ -7,11 +7,13 @@ import { Shade } from '../entities/shade.entity';
 import { StockTracking } from '../entities/stock-tracking.entity';
 import { StockTrackingService } from './stock-tracking.service';
 import { RekognitionModule } from '../rekognition/rekognition.module';
+import { S3Module } from '../s3/s3.module';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([Stock, Shade, StockTracking]), // Add Shade here
     RekognitionModule,
+    S3Module,
   ],
   controllers: [StockController],
   providers: [StockService, StockTrackingService],

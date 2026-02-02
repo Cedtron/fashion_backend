@@ -28,10 +28,11 @@ import { UpdateStockDto } from './dto/update-stock.dto';
 import { AdjustStockDto } from './dto/adjust-stock.dto';
 import { SearchStockDto } from './dto/search-stock.dto';
 import { Stock } from '../entities/stock.entity';
-import { diskStorage } from 'multer';
+import { diskStorage, memoryStorage } from 'multer';
 import { extname } from 'path';
 import { existsSync, mkdirSync, unlinkSync } from 'fs';
 import type { Express } from 'express';
+import { S3Service } from '../s3/s3.service';
 
 
 @ApiTags('stock')
@@ -40,6 +41,7 @@ export class StockController {
   constructor(
     private readonly stockService: StockService,
     private readonly trackingService: StockTrackingService,
+    private readonly s3Service: S3Service,
   ) {}
 
   // Ensure upload directory exists
@@ -65,24 +67,12 @@ export class StockController {
   }
 
   // ============================================================
-  // IMAGE UPLOAD
+  // IMAGE UPLOAD - NOW USING S3
   // ============================================================
   @Post(':id/image')
   @UseInterceptors(
     FileInterceptor('image', {
-      storage: diskStorage({
-        destination: (req, file, cb) => {
-          const uploadPath = './uploads/stock';
-          if (!existsSync(uploadPath)) {
-            mkdirSync(uploadPath, { recursive: true });
-          }
-          cb(null, uploadPath);
-        },
-        filename: (req, file, cb) => {
-          const unique = Date.now() + '-' + Math.round(Math.random() * 1e9);
-          cb(null, unique + extname(file.originalname).toLowerCase());
-        },
-      }),
+      storage: memoryStorage(), // Keep in memory for S3 upload
     }),
   )
   async uploadImage(
@@ -90,7 +80,7 @@ export class StockController {
     @UploadedFile() file: Express.Multer.File,
     @Headers('x-username') username?: string,
   ) {
-    console.log('[UPLOAD] File =>', file);
+    console.log('[UPLOAD] File =>', file?.originalname, file?.size);
 
     // 1️⃣ Validate upload
     if (!file) {
@@ -110,68 +100,59 @@ export class StockController {
       throw new BadRequestException('File too small or corrupted');
     }
 
-    // 2️⃣ Remove old image if exists
-    const stock = await this.stockService.findOne(id);
+    try {
+      // 2️⃣ Get current stock to check for old image
+      const stock = await this.stockService.findOne(id);
 
-    if (stock.imagePath) {
-      const oldPath = `.${stock.imagePath}`;
-      if (existsSync(oldPath)) {
+      // 3️⃣ Upload new image to S3
+      console.log('📤 Uploading to S3...');
+      const s3Url = await this.s3Service.uploadFile(file, 'stock');
+      console.log('✅ S3 Upload successful:', s3Url);
+
+      // 4️⃣ Delete old image from S3 if exists
+      if (stock.imagePath && stock.imagePath.includes('amazonaws.com')) {
         try {
-          unlinkSync(oldPath);
+          console.log('🗑️ Deleting old image from S3...');
+          await this.s3Service.deleteFile(stock.imagePath);
         } catch (e) {
-          console.warn('Failed to delete old image:', e);
+          console.warn('Failed to delete old S3 image:', e.message);
         }
       }
+
+      // 5️⃣ Update stock with new S3 URL
+      const updatedStock = await this.stockService.uploadImage(
+        id,
+        s3Url, // Store the full S3 URL
+        username || 'system',
+      );
+
+      // 6️⃣ Return response
+      return {
+        message: 'Image uploaded to S3 successfully',
+        imagePath: updatedStock.imagePath,
+        imageHash: updatedStock.imageHash,
+        stock: updatedStock,
+      };
+    } catch (error) {
+      console.error('❌ Upload failed:', error);
+      throw new BadRequestException(`Upload failed: ${error.message}`);
     }
-
-    // 3️⃣ Save new path
-    const imagePath = `/uploads/stock/${file.filename}`;
-
-    // 4️⃣ Delegate hashing + DB update to service
-    const updatedStock = await this.stockService.uploadImage(
-      id,
-      imagePath,
-      username || 'system',
-    );
-
-    // 5️⃣ Return response
-    return {
-      message: 'Image uploaded and indexed successfully',
-      imagePath: updatedStock.imagePath,
-      imageHash: updatedStock.imageHash,
-      stock: updatedStock,
-    };
   }
 
   // ============================================================
-  // SEARCH BY IMAGE (DISK-BASED – OPTION A)
+  // SEARCH BY IMAGE - SIMPLIFIED FOR NOW
   // ============================================================
   @Post('search-by-photo')
   @UseInterceptors(
     FileInterceptor('image', {
-      storage: diskStorage({
-        destination: (req, file, cb) => {
-          const uploadPath = './uploads/search';
-
-          if (!existsSync(uploadPath)) {
-            mkdirSync(uploadPath, { recursive: true });
-          }
-
-          cb(null, uploadPath);
-        },
-        filename: (req, file, cb) => {
-          const unique = Date.now() + '-' + Math.round(Math.random() * 1e9);
-          const ext = extname(file.originalname).toLowerCase();
-          cb(null, `${unique}${ext}`);
-        },
-      }),
+      storage: memoryStorage(), // Keep in memory for S3 upload
       limits: {
         fileSize: 5 * 1024 * 1024, // 5MB
       },
     }),
   )
   async searchByPhoto(@UploadedFile() file: Express.Multer.File) {
-    console.log('[SEARCH-BY-PHOTO] File:', file);
+    console.log('[SEARCH-BY-PHOTO] File:', file?.originalname, file?.size);
 
     if (!file) {
       throw new BadRequestException('Image file is required');
@@ -186,12 +167,19 @@ export class StockController {
       );
     }
 
-    if (!file.path) {
-      throw new BadRequestException('File path missing after upload');
+    try {
+      // For now, return a simple message that S3 search is being implemented
+      return {
+        message: 'Image search with S3 is being implemented',
+        uploadedFile: file.originalname,
+        fileSize: file.size,
+        // TODO: Implement actual image search using S3 URLs
+        results: []
+      };
+    } catch (error) {
+      console.error('❌ Search failed:', error);
+      throw new BadRequestException(`Search failed: ${error.message}`);
     }
-
-    // ✅ PASS FILE PATH (NOT BUFFER)
-    return this.stockService.searchByPhoto(file.path);
   }
 
 
