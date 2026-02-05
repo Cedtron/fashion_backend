@@ -104,34 +104,44 @@ export class StockController {
       // 2️⃣ Get current stock to check for old image
       const stock = await this.stockService.findOne(id);
 
-      // 3️⃣ Upload new image to S3
-      console.log('📤 Uploading to S3...');
-      const s3Url = await this.s3Service.uploadFile(file, 'stock');
-      console.log('✅ S3 Upload successful:', s3Url);
+      // 3️⃣ Upload new image to S3 or local storage
+      console.log('📤 Uploading image...');
+      const uploadResult = await this.s3Service.uploadFile(file, 'stock');
+      
+      let responseMessage = 'Image uploaded successfully';
+      if (uploadResult.error) {
+        responseMessage += ` (${uploadResult.error})`;
+      }
+      
+      console.log('✅ Upload successful:', uploadResult.url);
 
-      // 4️⃣ Delete old image from S3 if exists
-      if (stock.imagePath && stock.imagePath.includes('amazonaws.com')) {
+      // 4️⃣ Delete old image if exists
+      if (stock.imagePath) {
         try {
-          console.log('🗑️ Deleting old image from S3...');
-          await this.s3Service.deleteFile(stock.imagePath);
+          console.log('🗑️ Deleting old image...');
+          const deleteResult = await this.s3Service.deleteFile(stock.imagePath);
+          if (!deleteResult.success) {
+            console.warn('Failed to delete old image:', deleteResult.error);
+          }
         } catch (e) {
-          console.warn('Failed to delete old S3 image:', e.message);
+          console.warn('Failed to delete old image:', e.message);
         }
       }
 
-      // 5️⃣ Update stock with new S3 URL
+      // 5️⃣ Update stock with new URL
       const updatedStock = await this.stockService.uploadImage(
         id,
-        s3Url, // Store the full S3 URL
+        uploadResult.url,
         username || 'system',
       );
 
       // 6️⃣ Return response
       return {
-        message: 'Image uploaded to S3 successfully',
+        message: responseMessage,
         imagePath: updatedStock.imagePath,
         imageHash: updatedStock.imageHash,
         stock: updatedStock,
+        storageType: uploadResult.isS3 ? 'S3' : 'Local',
       };
     } catch (error) {
       console.error('❌ Upload failed:', error);

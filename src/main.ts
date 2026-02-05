@@ -4,6 +4,7 @@ import { ValidationPipe } from '@nestjs/common';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { NestExpressApplication } from '@nestjs/platform-express';
 import { S3Service } from './s3/s3.service';
+import { join } from 'path';
 
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
@@ -20,11 +21,31 @@ async function bootstrap() {
 
 
   /* =========================
+     STATIC FILE SERVING
+  ========================== */
+  // Serve uploaded files statically
+  app.useStaticAssets(join(__dirname, '..', 'uploads'), {
+    prefix: '/uploads/',
+  });
+  console.log('📁 Static file serving enabled for /uploads');
+
+  /* =========================
      S3 INITIALIZATION
   ========================== */
-  const s3Service = app.get(S3Service);
-  await s3Service.createBucketIfNotExists();
-  console.log('✅ S3 Service initialized and bucket ready');
+  try {
+    const s3Service = app.get(S3Service);
+    const s3Status = await s3Service.createBucketIfNotExists();
+    
+    if (s3Status.success) {
+      console.log('✅ S3 Service initialized and bucket ready');
+    } else {
+      console.log('⚠️ S3 Service disabled:', s3Status.error);
+      console.log('📁 Using local file storage instead');
+    }
+  } catch (error) {
+    console.warn('⚠️ S3 initialization failed:', error.message);
+    console.log('📁 Application will continue with local file storage');
+  }
 
 
 
