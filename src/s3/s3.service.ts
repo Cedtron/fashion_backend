@@ -25,12 +25,16 @@ export class S3Service {
     }
 
     try {
-      const accessKeyId = this.configService.get<string>('AWS_ACCESS_KEY_ID');
-      const secretAccessKey = this.configService.get<string>('AWS_SECRET_ACCESS_KEY');
-      const region = this.configService.get<string>('AWS_REGION');
+      // Support separate S3 credentials or fall back to general AWS credentials
+      const accessKeyId = this.configService.get<string>('S3_ACCESS_KEY_ID') || 
+                          this.configService.get<string>('AWS_ACCESS_KEY_ID');
+      const secretAccessKey = this.configService.get<string>('S3_SECRET_ACCESS_KEY') || 
+                              this.configService.get<string>('AWS_SECRET_ACCESS_KEY');
+      const region = this.configService.get<string>('S3_REGION') || 
+                     this.configService.get<string>('AWS_REGION');
 
       if (!accessKeyId || !secretAccessKey || !region) {
-        throw new Error('Missing AWS credentials or region');
+        throw new Error('Missing AWS/S3 credentials or region in .env file');
       }
 
       this.s3Client = new S3Client({
@@ -42,9 +46,10 @@ export class S3Service {
       });
       
       this.bucketName = this.configService.get<string>('S3_BUCKET_NAME', 'fashion-house-images');
-      console.log('✅ S3 Service initialized');
+      console.log('✅ S3 Service initialized from .env');
       console.log('📦 Bucket:', this.bucketName);
       console.log('🌍 Region:', region);
+      console.log('🔑 Using credentials from .env file');
     } catch (error) {
       console.warn('⚠️ S3 Service initialization failed:', error.message);
       console.log('📁 Will use local file storage instead');

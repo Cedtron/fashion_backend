@@ -416,4 +416,8 @@ async directResetPassword(email: string, newPassword: string): Promise<{ message
       username: user.username
     };
   }
+
+  async updatePassword(userId: number, hashedPassword: string): Promise<void> {
+    await this.usersRepository.update(userId, { password: hashedPassword });
+  }
 }

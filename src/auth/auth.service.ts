@@ -100,5 +100,69 @@ async login(loginDto: LoginDto, ipAddress?: string, userAgent?: string) {
     const { password, ...result } = user;
     return result;
   }
+
+  // Forgot Password Step 1: Verify email exists
+  async forgotPasswordStep1(email: string) {
+    const user = await this.usersService.findByEmail(email);
+    if (!user) {
+      throw new UnauthorizedException('Email not found');
+    }
+    return {
+      message: 'Email verified. Please provide your password hint.',
+      email: user.email,
+    };
+  }
+
+  // Forgot Password Step 2: Verify password hint
+  async forgotPasswordStep2(email: string, passwordhint: string) {
+    const user = await this.usersService.findByEmail(email);
+    if (!user) {
+      throw new UnauthorizedException('Email not found');
+    }
+    
+    // Compare password hint (case-insensitive)
+    if (user.passwordhint.toLowerCase().trim() !== passwordhint.toLowerCase().trim()) {
+      throw new UnauthorizedException('Password hint does not match');
+    }
+
+    return {
+      message: 'Password hint verified. You can now reset your password.',
+      email: user.email,
+    };
+  }
+
+  // Forgot Password Step 3: Reset password
+  async forgotPasswordStep3(email: string, passwordhint: string, newPassword: string) {
+    const user = await this.usersService.findByEmail(email);
+    if (!user) {
+      throw new UnauthorizedException('Email not found');
+    }
+    
+    // Verify password hint again
+    if (user.passwordhint.toLowerCase().trim() !== passwordhint.toLowerCase().trim()) {
+      throw new UnauthorizedException('Password hint does not match');
+    }
+
+    // Hash new password
+    const hashedPassword = await bcrypt.hash(newPassword, 10);
+    
+    // Update password
+    await this.usersService.updatePassword(user.id, hashedPassword);
+
+    // Log the password reset
+    await this.auditService.logChange(
+      'auth',
+      'password_reset',
+      user.id,
+      user.id,
+      { email: user.email, username: user.username },
+      `User ${user.username} reset their password via forgot password flow`
+    );
+
+    return {
+      message: 'Password reset successfully. You can now login with your new password.',
+      email: user.email,
+    };
+  }
 }
 

@@ -3,6 +3,7 @@ import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagg
 import { AuthService } from './auth.service';
 import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
+import { ForgotPasswordStep1Dto, ForgotPasswordStep2Dto, ForgotPasswordStep3Dto } from './dto/forgot-password.dto';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 
 @ApiTags('auth')
@@ -42,6 +43,30 @@ export class AuthController {
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   getProfile(@Request() req) {
     return req.user;
+  }
+
+  @Post('forgot-password/step1')
+  @ApiOperation({ summary: 'Forgot Password Step 1: Verify email' })
+  @ApiResponse({ status: 200, description: 'Email verified' })
+  @ApiResponse({ status: 401, description: 'Email not found' })
+  forgotPasswordStep1(@Body() dto: ForgotPasswordStep1Dto) {
+    return this.authService.forgotPasswordStep1(dto.email);
+  }
+
+  @Post('forgot-password/step2')
+  @ApiOperation({ summary: 'Forgot Password Step 2: Verify password hint' })
+  @ApiResponse({ status: 200, description: 'Password hint verified' })
+  @ApiResponse({ status: 401, description: 'Password hint does not match' })
+  forgotPasswordStep2(@Body() dto: ForgotPasswordStep2Dto) {
+    return this.authService.forgotPasswordStep2(dto.email, dto.passwordhint);
+  }
+
+  @Post('forgot-password/step3')
+  @ApiOperation({ summary: 'Forgot Password Step 3: Reset password' })
+  @ApiResponse({ status: 200, description: 'Password reset successfully' })
+  @ApiResponse({ status: 401, description: 'Invalid credentials' })
+  forgotPasswordStep3(@Body() dto: ForgotPasswordStep3Dto) {
+    return this.authService.forgotPasswordStep3(dto.email, dto.passwordhint, dto.newPassword);
   }
 }
 
