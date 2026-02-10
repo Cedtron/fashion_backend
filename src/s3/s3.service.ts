@@ -8,92 +8,56 @@ import * as path from 'path';
 export class S3Service {
   private s3Client: S3Client;
   private bucketName: string;
-  private s3Available: boolean = false;
-  private uploadsDir: string;
+  private s3Enabled: boolean = true;
+  private region: string;
 
   constructor(private configService: ConfigService) {
-    this.uploadsDir = path.join(process.cwd(), 'uploads');
-    this.ensureUploadsDirectory();
-
-    // Check if S3 is disabled
-    const disableS3 = this.configService.get<string>('DISABLE_S3', 'false') === 'true';
-    if (disableS3) {
-      console.log('⚠️ S3 disabled by configuration (DISABLE_S3=true)');
-      console.log('📁 Using local file storage only');
-      this.s3Available = false;
-      return;
-    }
-
+    const useIamRole = this.configService.get<string>('USE_IAM_ROLE', 'true') === 'true';
+    this.region = this.configService.get<string>('AWS_REGION', 'us-east-1');
+    this.bucketName = this.configService.get<string>('S3_BUCKET_NAME', 'fashion-house-images');
+    
     try {
-      // Support separate S3 credentials or fall back to general AWS credentials
-      const accessKeyId = this.configService.get<string>('S3_ACCESS_KEY_ID') || 
-                          this.configService.get<string>('AWS_ACCESS_KEY_ID');
-      const secretAccessKey = this.configService.get<string>('S3_SECRET_ACCESS_KEY') || 
-                              this.configService.get<string>('AWS_SECRET_ACCESS_KEY');
-      const region = this.configService.get<string>('S3_REGION') || 
-                     this.configService.get<string>('AWS_REGION');
-
-      if (!accessKeyId || !secretAccessKey || !region) {
-        throw new Error('Missing AWS/S3 credentials or region in .env file');
+      if (useIamRole) {
+        // Use IAM role credentials (automatic on EC2)
+        this.s3Client = new S3Client({
+          region: this.region,
+          // No credentials needed - will use IAM role attached to EC2 instance
+        });
+        console.log('✅ S3 Service initialized with IAM Role');
+      } else {
+        // Use access keys (fallback for local development)
+        const accessKeyId = this.configService.get<string>('AWS_ACCESS_KEY_ID');
+        const secretAccessKey = this.configService.get<string>('AWS_SECRET_ACCESS_KEY');
+        
+        if (!accessKeyId || !secretAccessKey) {
+          throw new Error('AWS credentials not configured');
+        }
+        
+        this.s3Client = new S3Client({
+          region: this.region,
+          credentials: {
+            accessKeyId,
+            secretAccessKey,
+          },
+        });
+        console.log('✅ S3 Service initialized with Access Keys');
       }
-
-      this.s3Client = new S3Client({
-        region,
-        credentials: {
-          accessKeyId,
-          secretAccessKey,
-        },
-      });
       
-      this.bucketName = this.configService.get<string>('S3_BUCKET_NAME', 'fashion-house-images');
-      console.log('✅ S3 Service initialized from .env');
       console.log('📦 Bucket:', this.bucketName);
-      console.log('🌍 Region:', region);
-      console.log('🔑 Using credentials from .env file');
+      console.log('🌍 Region:', this.region);
     } catch (error) {
-      console.warn('⚠️ S3 Service initialization failed:', error.message);
-      console.log('📁 Will use local file storage instead');
-      this.s3Available = false;
+      console.error('❌ S3 initialization failed:', error.message);
+      console.log('⚠️ S3 disabled - using local storage only');
+      this.s3Enabled = false;
     }
   }
 
-  private ensureUploadsDirectory(): void {
-    const stockDir = path.join(this.uploadsDir, 'stock');
-    if (!fs.existsSync(this.uploadsDir)) {
-      fs.mkdirSync(this.uploadsDir, { recursive: true });
-    }
-    if (!fs.existsSync(stockDir)) {
-      fs.mkdirSync(stockDir, { recursive: true });
-    }
-  }
-
-  async uploadFile(file: Express.Multer.File, folder: string = 'stock'): Promise<{ url: string; isS3: boolean; error?: string }> {
-    // Try S3 first if available
-    if (this.s3Available) {
-      try {
-        const s3Url = await this.uploadToS3(file, folder);
-        return { url: s3Url, isS3: true };
-      } catch (error) {
-        console.error('❌ S3 Upload failed, falling back to local storage:', error.message);
-        // Fall through to local storage
-      }
+  async uploadFile(file: Express.Multer.File, folder: string = 'stock'): Promise<string> {
+    // If S3 is disabled, save locally
+    if (!this.s3Enabled) {
+      return this.saveFileLocally(file, folder);
     }
 
-    // Fallback to local storage
-    try {
-      const localUrl = await this.saveToLocal(file, folder);
-      return { 
-        url: localUrl, 
-        isS3: false, 
-        error: this.s3Available ? 'S3 upload failed, using local storage' : 'S3 not available, using local storage'
-      };
-    } catch (error) {
-      console.error('❌ Local storage also failed:', error.message);
-      throw new Error(`Both S3 and local storage failed: ${error.message}`);
-    }
-  }
-
-  private async uploadToS3(file: Express.Multer.File, folder: string): Promise<string> {
     const fileName = `${folder}/${Date.now()}-${file.originalname}`;
     
     const command = new PutObjectCommand({
@@ -101,107 +65,124 @@ export class S3Service {
       Key: fileName,
       Body: file.buffer,
       ContentType: file.mimetype,
-      ACL: 'public-read',
+      ACL: 'public-read', // Make it publicly accessible
     });
 
-    console.log('📤 Uploading to S3:', fileName);
-    await this.s3Client.send(command);
-    
-    const publicUrl = `https://${this.bucketName}.s3.${this.configService.get<string>('AWS_REGION')}.amazonaws.com/${fileName}`;
-    console.log('✅ S3 Upload successful:', publicUrl);
-    return publicUrl;
-  }
-
-  private async saveToLocal(file: Express.Multer.File, folder: string): Promise<string> {
-    const fileName = `${Date.now()}-${file.originalname}`;
-    const folderPath = path.join(this.uploadsDir, folder);
-    const filePath = path.join(folderPath, fileName);
-
-    // Ensure folder exists
-    if (!fs.existsSync(folderPath)) {
-      fs.mkdirSync(folderPath, { recursive: true });
-    }
-
-    // Save file
-    fs.writeFileSync(filePath, file.buffer);
-    
-    const localUrl = `/uploads/${folder}/${fileName}`;
-    console.log('📁 Local storage successful:', localUrl);
-    return localUrl;
-  }
-
-  async deleteFile(fileUrl: string): Promise<{ success: boolean; error?: string }> {
     try {
-      if (fileUrl.includes('s3.amazonaws.com')) {
-        // S3 file
-        if (!this.s3Available) {
-          return { success: false, error: 'S3 not available' };
-        }
+      console.log('📤 Uploading to S3:', fileName);
+      await this.s3Client.send(command);
+      
+      // Return the public URL
+      const publicUrl = `https://${this.bucketName}.s3.${this.region}.amazonaws.com/${fileName}`;
+      console.log('✅ Upload successful:', publicUrl);
+      return publicUrl;
+    } catch (error) {
+      console.error('❌ S3 Upload failed:', error.message);
+      console.log('⚠️ Falling back to local storage');
+      
+      // Fallback to local storage
+      return this.saveFileLocally(file, folder);
+    }
+  }
 
-        const url = new URL(fileUrl);
-        const key = url.pathname.substring(1);
-        
-        const command = new DeleteObjectCommand({
-          Bucket: this.bucketName,
-          Key: key,
-        });
+  private saveFileLocally(file: Express.Multer.File, folder: string): string {
+    try {
+      const uploadsDir = path.join(process.cwd(), 'uploads', folder);
+      
+      // Create directory if it doesn't exist
+      if (!fs.existsSync(uploadsDir)) {
+        fs.mkdirSync(uploadsDir, { recursive: true });
+      }
+      
+      const fileName = `${Date.now()}-${file.originalname}`;
+      const filePath = path.join(uploadsDir, fileName);
+      
+      // Save file
+      fs.writeFileSync(filePath, file.buffer);
+      
+      const localUrl = `/uploads/${folder}/${fileName}`;
+      console.log('💾 Saved locally:', localUrl);
+      return localUrl;
+    } catch (error) {
+      console.error('❌ Local save failed:', error.message);
+      throw new Error('Failed to save file');
+    }
+  }
 
-        console.log('🗑️ Deleting from S3:', key);
-        await this.s3Client.send(command);
-        console.log('✅ S3 Delete successful');
-        return { success: true };
-      } else {
-        // Local file
+  async deleteFile(fileUrl: string): Promise<void> {
+    // If it's a local file, delete locally
+    if (fileUrl.startsWith('/uploads/')) {
+      try {
         const filePath = path.join(process.cwd(), fileUrl);
         if (fs.existsSync(filePath)) {
           fs.unlinkSync(filePath);
-          console.log('✅ Local file deleted:', filePath);
-          return { success: true };
-        } else {
-          return { success: false, error: 'File not found' };
+          console.log('✅ Local file deleted:', fileUrl);
         }
+      } catch (error) {
+        console.error('❌ Local delete failed:', error.message);
       }
+      return;
+    }
+
+    // If S3 is disabled, skip
+    if (!this.s3Enabled) {
+      console.log('⚠️ S3 disabled - skipping delete');
+      return;
+    }
+
+    try {
+      // Extract key from S3 URL
+      const url = new URL(fileUrl);
+      const key = url.pathname.substring(1); // Remove leading slash
+      
+      const command = new DeleteObjectCommand({
+        Bucket: this.bucketName,
+        Key: key,
+      });
+
+      console.log('🗑️ Deleting from S3:', key);
+      await this.s3Client.send(command);
+      console.log('✅ Delete successful');
     } catch (error) {
-      console.error('❌ Delete failed:', error.message);
-      return { success: false, error: error.message };
+      console.error('❌ S3 Delete failed:', error.message);
+      // Don't throw - just log the error
     }
   }
 
   async createBucketIfNotExists(): Promise<{ success: boolean; error?: string }> {
-    if (!this.s3Available) {
-      return { success: false, error: 'S3 not initialized' };
+    // If S3 is disabled, skip
+    if (!this.s3Enabled) {
+      return { 
+        success: false, 
+        error: 'S3 initialization failed - using local storage' 
+      };
     }
 
     try {
       const headCommand = new HeadBucketCommand({ Bucket: this.bucketName });
       await this.s3Client.send(headCommand);
       console.log('✅ S3 Bucket exists:', this.bucketName);
-      this.s3Available = true;
       return { success: true };
     } catch (error) {
       console.error('❌ S3 Bucket access failed:', error.message);
       console.log('⚠️ S3 will be disabled. Images will use local storage fallback.');
-      this.s3Available = false;
-      return { success: false, error: error.message };
+      this.s3Enabled = false;
+      
+      return { 
+        success: false, 
+        error: error.message || 'Bucket access failed' 
+      };
     }
   }
 
   getPublicUrl(key: string): string {
-    if (this.s3Available) {
-      return `https://${this.bucketName}.s3.${this.configService.get<string>('AWS_REGION')}.amazonaws.com/${key}`;
+    if (!this.s3Enabled) {
+      return `/uploads/${key}`;
     }
-    return `/uploads/${key}`;
+    return `https://${this.bucketName}.s3.${this.region}.amazonaws.com/${key}`;
   }
 
-  isS3Available(): boolean {
-    return this.s3Available;
-  }
-
-  getStatus(): { s3Available: boolean; bucketName: string; uploadsDir: string } {
-    return {
-      s3Available: this.s3Available,
-      bucketName: this.bucketName,
-      uploadsDir: this.uploadsDir,
-    };
+  isS3Enabled(): boolean {
+    return this.s3Enabled;
   }
 }
