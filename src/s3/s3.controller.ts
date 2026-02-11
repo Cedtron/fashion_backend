@@ -13,7 +13,7 @@ export class S3Controller {
     const status = this.s3Service.getStatus();
     return {
       ...status,
-      message: status.s3Available 
+      message: status.enabled 
         ? 'S3 is available and ready' 
         : 'S3 is disabled, using local storage',
     };

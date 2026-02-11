@@ -52,10 +52,11 @@ export class S3Service {
     }
   }
 
-  async uploadFile(file: Express.Multer.File, folder: string = 'stock'): Promise<string> {
+  async uploadFile(file: Express.Multer.File, folder: string = 'stock'): Promise<{ url: string; isS3: boolean; error?: string }> {
     // If S3 is disabled, save locally
     if (!this.s3Enabled) {
-      return this.saveFileLocally(file, folder);
+      const localUrl = this.saveFileLocally(file, folder);
+      return { url: localUrl, isS3: false };
     }
 
     const fileName = `${folder}/${Date.now()}-${file.originalname}`;
@@ -75,13 +76,14 @@ export class S3Service {
       // Return the public URL
       const publicUrl = `https://${this.bucketName}.s3.${this.region}.amazonaws.com/${fileName}`;
       console.log('✅ Upload successful:', publicUrl);
-      return publicUrl;
+      return { url: publicUrl, isS3: true };
     } catch (error) {
       console.error('❌ S3 Upload failed:', error.message);
       console.log('⚠️ Falling back to local storage');
       
       // Fallback to local storage
-      return this.saveFileLocally(file, folder);
+      const localUrl = this.saveFileLocally(file, folder);
+      return { url: localUrl, isS3: false, error: error.message };
     }
   }
 
@@ -109,7 +111,7 @@ export class S3Service {
     }
   }
 
-  async deleteFile(fileUrl: string): Promise<void> {
+  async deleteFile(fileUrl: string): Promise<{ success: boolean; error?: string }> {
     // If it's a local file, delete locally
     if (fileUrl.startsWith('/uploads/')) {
       try {
@@ -118,16 +120,17 @@ export class S3Service {
           fs.unlinkSync(filePath);
           console.log('✅ Local file deleted:', fileUrl);
         }
+        return { success: true };
       } catch (error) {
         console.error('❌ Local delete failed:', error.message);
+        return { success: false, error: error.message };
       }
-      return;
     }
 
     // If S3 is disabled, skip
     if (!this.s3Enabled) {
       console.log('⚠️ S3 disabled - skipping delete');
-      return;
+      return { success: false, error: 'S3 disabled' };
     }
 
     try {
@@ -143,9 +146,10 @@ export class S3Service {
       console.log('🗑️ Deleting from S3:', key);
       await this.s3Client.send(command);
       console.log('✅ Delete successful');
+      return { success: true };
     } catch (error) {
       console.error('❌ S3 Delete failed:', error.message);
-      // Don't throw - just log the error
+      return { success: false, error: error.message };
     }
   }
 
@@ -184,5 +188,13 @@ export class S3Service {
 
   isS3Enabled(): boolean {
     return this.s3Enabled;
+  }
+
+  getStatus(): { enabled: boolean; bucket: string; region: string } {
+    return {
+      enabled: this.s3Enabled,
+      bucket: this.bucketName,
+      region: this.region,
+    };
   }
 }
