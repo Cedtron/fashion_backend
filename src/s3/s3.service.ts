@@ -153,31 +153,31 @@ export class S3Service {
     }
   }
 
-  async createBucketIfNotExists(): Promise<{ success: boolean; error?: string }> {
-    // If S3 is disabled, skip
-    if (!this.s3Enabled) {
-      return { 
-        success: false, 
-        error: 'S3 initialization failed - using local storage' 
-      };
-    }
+  // async createBucketIfNotExists(): Promise<{ success: boolean; error?: string }> {
+  //   // If S3 is disabled, skip
+  //   if (!this.s3Enabled) {
+  //     return { 
+  //       success: false, 
+  //       error: 'S3 initialization failed - using local storage' 
+  //     };
+  //   }
 
-    try {
-      const headCommand = new HeadBucketCommand({ Bucket: this.bucketName });
-      await this.s3Client.send(headCommand);
-      console.log('✅ S3 Bucket exists:', this.bucketName);
-      return { success: true };
-    } catch (error) {
-      console.error('❌ S3 Bucket access failed:', error.message);
-      console.log('⚠️ S3 will be disabled. Images will use local storage fallback.');
-      this.s3Enabled = false;
+  //   try {
+  //     const headCommand = new HeadBucketCommand({ Bucket: this.bucketName });
+  //     await this.s3Client.send(headCommand);
+  //     console.log('✅ S3 Bucket exists:', this.bucketName);
+  //     return { success: true };
+  //   } catch (error) {
+  //     console.error('❌ S3 Bucket access failed:', error.message);
+  //     console.log('⚠️ S3 will be disabled. Images will use local storage fallback.');
+  //     this.s3Enabled = false;
       
-      return { 
-        success: false, 
-        error: error.message || 'Bucket access failed' 
-      };
-    }
-  }
+  //     return { 
+  //       success: false, 
+  //       error: error.message || 'Bucket access failed' 
+  //     };
+  //   }
+  // }
 
   getPublicUrl(key: string): string {
     if (!this.s3Enabled) {
