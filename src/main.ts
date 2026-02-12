@@ -32,20 +32,7 @@ async function bootstrap() {
   /* =========================
      S3 INITIALIZATION
   ========================== */
-  try {
-    const s3Service = app.get(S3Service);
-    const s3Status = await s3Service.createBucketIfNotExists();
-    
-    if (s3Status.success) {
-      console.log('✅ S3 Service initialized and bucket ready');
-    } else {
-      console.log('⚠️ S3 Service disabled:', s3Status.error);
-      console.log('📁 Using local file storage instead');
-    }
-  } catch (error) {
-    console.warn('⚠️ S3 initialization failed:', error.message);
-    console.log('📁 Application will continue with local file storage');
-  }
+ 
 
 
 

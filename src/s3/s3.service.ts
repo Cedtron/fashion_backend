@@ -153,9 +153,7 @@ export class S3Service {
     }
   }
 
- async createBucketIfNotExists(): Promise<{ success: boolean; error?: string }> {
-  return { success: true };
-}
+
   getPublicUrl(key: string): string {
     if (!this.s3Enabled) {
       return `/uploads/${key}`;
