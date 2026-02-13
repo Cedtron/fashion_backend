@@ -14,7 +14,7 @@ export class S3Service {
   constructor(private configService: ConfigService) {
     const useIamRole = this.configService.get<string>('USE_IAM_ROLE', 'true') === 'true';
     this.region = this.configService.get<string>('AWS_REGION', 'us-east-1');
-    this.bucketName = this.configService.get<string>('S3_BUCKET_NAME', 'fashion-house-images');
+    this.bucketName = this.configService.get<string>('S3_BUCKET_NAME', 'fash');
     
     try {
       if (useIamRole) {
