@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { S3Client, PutObjectCommand, DeleteObjectCommand, HeadBucketCommand } from '@aws-sdk/client-s3';
+import { S3Client, PutObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3';
 import { ConfigService } from '@nestjs/config';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -8,24 +8,30 @@ import * as path from 'path';
 export class S3Service {
   private s3Client: S3Client;
   private bucketName: string;
-  private s3Enabled: boolean = true;
+  private s3Enabled: boolean = false;
   private region: string;
 
   constructor(private configService: ConfigService) {
+    const disableS3 = this.configService.get<string>('DISABLE_S3', 'false') === 'true';
+    
+    if (disableS3) {
+      console.log('⚠️ S3 explicitly disabled via DISABLE_S3 env variable');
+      console.log('💾 Using local storage only');
+      this.s3Enabled = false;
+      return;
+    }
+
     const useIamRole = this.configService.get<string>('USE_IAM_ROLE', 'true') === 'true';
     this.region = this.configService.get<string>('AWS_REGION', 'us-east-1');
     this.bucketName = this.configService.get<string>('S3_BUCKET_NAME', 'fash');
     
     try {
       if (useIamRole) {
-        // Use IAM role credentials (automatic on EC2)
         this.s3Client = new S3Client({
           region: this.region,
-          // No credentials needed - will use IAM role attached to EC2 instance
         });
-        console.log('✅ S3 Service initialized with IAM Role');
+        console.log('✅ S3 Client initialized with IAM Role');
       } else {
-        // Use access keys (fallback for local development)
         const accessKeyId = this.configService.get<string>('AWS_ACCESS_KEY_ID');
         const secretAccessKey = this.configService.get<string>('AWS_SECRET_ACCESS_KEY');
         
@@ -40,14 +46,16 @@ export class S3Service {
             secretAccessKey,
           },
         });
-        console.log('✅ S3 Service initialized with Access Keys');
+        console.log('✅ S3 Client initialized with Access Keys');
       }
       
       console.log('📦 Bucket:', this.bucketName);
       console.log('🌍 Region:', this.region);
+      console.log('⚠️ S3 will be tested on first upload - fallback to local if fails');
+      this.s3Enabled = true;
     } catch (error) {
       console.error('❌ S3 initialization failed:', error.message);
-      console.log('⚠️ S3 disabled - using local storage only');
+      console.log('💾 Using local storage only');
       this.s3Enabled = false;
     }
   }

@@ -344,3 +344,31 @@ export class StockController {
     return await this.stockService.remove(id, username || 'system');
   }
 }
+
+
+  @Post('search-by-photo')
+  @ApiOperation({ summary: 'Search for similar products by uploading a photo' })
+  @UseInterceptors(FileInterceptor('image', { storage: memoryStorage() }))
+  async searchByPhoto(@UploadedFile() file: Express.Multer.File) {
+    if (!file) {
+      throw new BadRequestException('No image file provided');
+    }
+
+    console.log('🔍 Starting image search...');
+    
+    // Get all stock items with images
+    const allStock = await this.stockService.findAll();
+    const stockWithImages = allStock.filter(item => item.imagePath);
+
+    console.log(`📦 Found ${stockWithImages.length} products with images`);
+
+    // For now, return a simple response
+    // TODO: Implement actual image comparison using AWS Rekognition
+    
+    return {
+      message: `Searching among ${stockWithImages.length} products`,
+      totalProducts: stockWithImages.length,
+      note: 'Image search feature is being implemented',
+    };
+  }
+}
