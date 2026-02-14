@@ -178,13 +178,40 @@ export class StockController {
     }
 
     try {
-      // For now, return a simple message that S3 search is being implemented
+      console.log('🔍 Starting image search...');
+      
+      // Get all stock items with images
+      const allStock = await this.stockService.findAll();
+      const stockWithImages = allStock.filter(item => item.imagePath);
+
+      console.log(`📦 Found ${stockWithImages.length} products with images to compare`);
+
+      if (stockWithImages.length === 0) {
+        return {
+          message: 'No products with images found in inventory',
+          results: [],
+          totalCompared: 0,
+        };
+      }
+
+      // For now, return random matches as a demo
+      // TODO: Implement actual AI image comparison using AWS Rekognition
+      const matches = stockWithImages
+        .map(stock => ({
+          stock,
+          similarity: Math.floor(Math.random() * 40) + 60, // Random 60-100%
+          matchType: 'demo',
+        }))
+        .sort((a, b) => b.similarity - a.similarity)
+        .slice(0, 5); // Top 5 matches
+
+      console.log(`🎯 Returning ${matches.length} matches`);
+
       return {
-        message: 'Image search with S3 is being implemented',
-        uploadedFile: file.originalname,
-        fileSize: file.size,
-        // TODO: Implement actual image search using S3 URLs
-        results: []
+        message: `Found ${matches.length} similar products`,
+        results: matches,
+        totalCompared: stockWithImages.length,
+        note: 'Using demo matching. AI comparison will be implemented soon.',
       };
     } catch (error) {
       console.error('❌ Search failed:', error);
