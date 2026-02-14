@@ -1,12 +1,9 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { RekognitionService } from './rekognition.service';
-import { RekognitionController } from './rekognition.controller';
-import { StockModule } from '../stock/stock.module';
 
 @Module({
-  imports: [ConfigModule, StockModule],
-  controllers: [RekognitionController],
+  imports: [ConfigModule],
   providers: [RekognitionService],
   exports: [RekognitionService],
 })
