@@ -11,7 +11,7 @@ import { User } from '../entities/user.entity';
 import { existsSync, mkdirSync, unlinkSync } from 'fs';
 import * as bcrypt from 'bcrypt';
 
-
+ 
 @ApiTags('users')
 @ApiBearerAuth('JWT-auth')
 @Controller('users')
@@ -248,7 +248,7 @@ async deactivate(@Param('id', ParseIntPipe) id: number, @Request() req) {
       } catch (error) {
         result.testResults = {
           testPassword: testPassword,
-          error: error.message,
+          error: (error as Error).message,
           message: 'Error during password comparison'
         };
         console.log(`❌ [DEBUG] Password test error:`, error);
@@ -285,20 +285,7 @@ async deactivate(@Param('id', ParseIntPipe) id: number, @Request() req) {
   @ApiOperation({ summary: 'Step 2: Verify password hint' })
   async verifyPasswordHint(@Body() body: { email: string; passwordHint: string }) {
     const { email, passwordHint } = body;
-    
-    console.log(`🔑 [VERIFY HINT] Checking password hint for: ${email}`);
-    
-    const user = await this.usersService.findByEmail(email);
-    if (!user) {
-      throw new BadRequestException('Email not found');
-    }
-
-    // Validate password hint (case-insensitive comparison)
-    if (user.passwordhint.toLowerCase().trim() !== passwordHint.toLowerCase().trim()) {
-      throw new BadRequestException('Invalid password hint');
-    }
-
-    console.log(`✅ [VERIFY HINT] Password hint verified for: ${email}`);
+    await this.usersService.validatePasswordHintForUser(email, passwordHint);
     
     return {
       message: 'Password hint verified successfully',
@@ -307,8 +294,8 @@ async deactivate(@Param('id', ParseIntPipe) id: number, @Request() req) {
     };
   }
 @Post('reset-password-direct')
-async directResetPassword(@Body() body: { email: string; newPassword: string }) {
-  return this.usersService.directResetPassword(body.email, body.newPassword);
+async directResetPassword(@Body() body: { email: string; passwordHint: string; newPassword: string }) {
+  return this.usersService.directResetPassword(body.email, body.newPassword, body.passwordHint);
 }
   @Post('change-password-final')
   @ApiOperation({ summary: 'Step 3: Change password after verification' })

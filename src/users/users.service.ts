@@ -9,7 +9,7 @@ import { ForgotPasswordDto, VerifyResetCodeDto, ResetPasswordDto } from './dto/f
 import { AuditService } from '../common/services/audit.service';
 import { EmailService } from '../common/services/email.service';
 import * as bcrypt from 'bcrypt';
-
+ 
 @Injectable()
 export class UsersService {
   constructor(
@@ -127,25 +127,33 @@ export class UsersService {
 
   // =============== FORGOT PASSWORD METHODS ===============
 
-  async forgotPassword(forgotPasswordDto: ForgotPasswordDto): Promise<{ message: string; code?: string }> {
-    const { email, passwordHint } = forgotPasswordDto;
+  private normalizePasswordHint(value?: string): string {
+    return (value || '').trim().toLowerCase();
+  }
 
-    // Find user by email
+  private async getUserForPasswordRecovery(email: string): Promise<User> {
     const user = await this.usersRepository.findOne({ where: { email } });
     if (!user) {
-      // Don't reveal if user exists or not for security
-      throw new BadRequestException('If your email exists in our system, you will receive a reset code.');
+      throw new BadRequestException('Invalid email or password hint');
+    }
+    return user;
+  }
+
+  async validatePasswordHintForUser(email: string, passwordHint: string): Promise<User> {
+    const user = await this.getUserForPasswordRecovery(email);
+    const storedHint = this.normalizePasswordHint(user.passwordhint);
+    const providedHint = this.normalizePasswordHint(passwordHint);
+
+    if (!storedHint || !providedHint || storedHint !== providedHint) {
+      throw new BadRequestException('Invalid email or password hint');
     }
 
-    // Check if this is a dummy request for email-only verification
-    const isDummyRequest = passwordHint === "dummy_hint_for_email_code" || passwordHint === "email_code_request";
-    
-    if (!isDummyRequest && user.passwordhint) {
-      // Validate password hint (case-insensitive comparison)
-      if (user.passwordhint.toLowerCase().trim() !== passwordHint.toLowerCase().trim()) {
-        throw new BadRequestException('Invalid email or password hint');
-      }
-    }
+    return user;
+  }
+
+  async forgotPassword(forgotPasswordDto: ForgotPasswordDto): Promise<{ message: string; code?: string }> {
+    const { email, passwordHint } = forgotPasswordDto;
+    const user = await this.validatePasswordHintForUser(email, passwordHint);
 
     // Generate 6-digit code
     const code = Math.floor(100000 + Math.random() * 900000).toString();
@@ -178,9 +186,7 @@ export class UsersService {
       // Still return success but log the error
     }
 
-    const message = isDummyRequest 
-      ? 'Verification code has been sent to your email.'
-      : 'Email and password hint verified successfully. Reset code has been sent to your email.';
+    const message = 'Email and password hint verified successfully. Reset code has been sent to your email.';
 
     // IMPORTANT: Remove the code from production response - only for testing
     // In production, return only the message
@@ -229,30 +235,30 @@ export class UsersService {
   }
 
   async resetPassword(resetPasswordDto: ResetPasswordDto): Promise<{ message: string }> {
-    const { email, code, newPassword } = resetPasswordDto;
+    const { email, code, passwordHint, newPassword } = resetPasswordDto;
+    const user = await this.getUserForPasswordRecovery(email);
+    let resetRecord: PasswordReset | null = null;
 
-    // Find user by email
-    const user = await this.usersRepository.findOne({ where: { email } });
-    if (!user) {
-      throw new BadRequestException('Invalid email or code');
-    }
+    if (code) {
+      resetRecord = await this.passwordResetRepository.findOne({
+        where: {
+          userId: user.id,
+          code,
+          isUsed: false,
+        },
+      });
 
-    // Find valid reset code
-    const resetRecord = await this.passwordResetRepository.findOne({
-      where: {
-        userId: user.id,
-        code,
-        isUsed: false,
-      },
-    });
+      if (!resetRecord) {
+        throw new BadRequestException('Invalid or expired code');
+      }
 
-    if (!resetRecord) {
-      throw new BadRequestException('Invalid or expired code');
-    }
-
-    // Check if code is expired
-    if (new Date() > resetRecord.expiresAt) {
-      throw new BadRequestException('Code has expired. Please request a new one.');
+      if (new Date() > resetRecord.expiresAt) {
+        throw new BadRequestException('Code has expired. Please request a new one.');
+      }
+    } else if (passwordHint) {
+      await this.validatePasswordHintForUser(email, passwordHint);
+    } else {
+      throw new BadRequestException('A reset code or password hint is required');
     }
 
     // Check if new password is the same as old password
@@ -268,15 +274,17 @@ export class UsersService {
     user.password = hashedPassword;
     await this.usersRepository.save(user);
 
-    // Mark reset code as used
-    await this.passwordResetRepository.update(resetRecord.id, { isUsed: true });
+    // Mark reset code as used when code-based reset is used
+    if (resetRecord) {
+      await this.passwordResetRepository.update(resetRecord.id, { isUsed: true });
+    }
 
     // Log the password change
     await this.auditService.logChange('user', 'password_reset', user.id, user.id, {
-      action: 'Password reset via email verification',
+      action: resetRecord ? 'Password reset via email verification code' : 'Password reset via password hint verification',
       email: user.email,
       username: user.username,
-      resetCodeId: resetRecord.id
+      resetCodeId: resetRecord?.id ?? null
     });
 
     // Send confirmation email
@@ -355,11 +363,12 @@ export class UsersService {
     return updatedUser;
   }
 // Add this to your UsersService
-async directResetPassword(email: string, newPassword: string): Promise<{ message: string }> {
-  // Find user by email
-  const user = await this.usersRepository.findOne({ where: { email } });
-  if (!user) {
-    throw new BadRequestException('User not found');
+async directResetPassword(email: string, newPassword: string, passwordHint: string): Promise<{ message: string }> {
+  const user = await this.validatePasswordHintForUser(email, passwordHint);
+
+  const isSamePassword = await bcrypt.compare(newPassword, user.password);
+  if (isSamePassword) {
+    throw new BadRequestException('New password cannot be the same as the old password');
   }
 
   // Hash new password using same bcrypt method
@@ -371,10 +380,16 @@ async directResetPassword(email: string, newPassword: string): Promise<{ message
 
   // Log the password change
   await this.auditService.logChange('user', 'password_reset_direct', user.id, user.id, {
-    action: 'Password reset directly via email',
+    action: 'Password reset directly via password hint verification',
     email: user.email,
     username: user.username
   });
+
+  try {
+    await this.emailService.sendPasswordChangeConfirmation(email, user.username);
+  } catch (error) {
+    console.error('Failed to send confirmation email:', error);
+  }
 
   return { message: 'Password reset successfully' };
 }

@@ -11,7 +11,7 @@ export class ForgotPasswordDto {
   @IsString()
   @IsNotEmpty()
   passwordHint: string;
-}
+} 
 
 export class VerifyResetCodeDto {
   @ApiProperty({ example: 'user@example.com' })
@@ -35,6 +35,11 @@ export class ResetPasswordDto {
   @IsOptional()
   @IsString()
   code?: string;
+
+  @ApiProperty({ example: 'Your password hint answer', required: false, description: 'Required when resetting without a verification code' })
+  @IsOptional()
+  @IsString()
+  passwordHint?: string;
 
   @ApiProperty({ example: 'newPassword123' })
   @IsString()

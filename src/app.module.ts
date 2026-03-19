@@ -14,6 +14,7 @@ import { GoogleAiModule } from './vertex-ai/vertex-ai.module';
 import { RekognitionModule } from './rekognition/rekognition.module';
 import { HealthModule } from './health/health.module';
 import { S3Module } from './s3/s3.module';
+import { WhatsappModule } from './whatsapp/whatsapp.module';
 
 @Module({
   imports: [
@@ -28,6 +29,8 @@ import { S3Module } from './s3/s3.module';
     CommonModule,
     // S3 module for file storage
     S3Module,
+    // WhatsApp message sending (Cloud API)
+    WhatsappModule,
     // Feature modules
     UsersModule,
     SuppliersModule,
